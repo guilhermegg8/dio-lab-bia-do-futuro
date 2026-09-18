@@ -53,8 +53,8 @@ Informal, acessível e didático, como um professor particular.
 
 ```mermaid
 flowchart TD
-    A[Cliente] --> B[Streamlit (Interface Visual)]
-    B --> C[LLM - Ollama]
+    A[Usuário] --> B["Streamlit (Interface Visual)"]
+    B --> C[LLM]
     C --> D[Base de Conhecimento]
     D --> C
     C --> E[Validação]
