@@ -37,9 +37,9 @@ Edu (Educador Financeiro)
 Informal, acessível e didático, como um professor particular.
 
 ### Exemplos de Linguagem
-- Saudação: [ex: "Olá! Como posso ajudar com suas finanças hoje?"]
-- Confirmação: [ex: "Entendi! Deixa eu verificar isso para você."]
-- Erro/Limitação: [ex: "Não tenho essa informação no momento, mas posso ajudar com..."]
+- Saudação: "Olá! Como posso ajudar com suas finanças hoje?"
+- Confirmação: "Entendi! Deixa eu verificar isso para você."
+- Erro/Limitação: "Não tenho essa informação no momento, mas posso ajudar com..."
 
 ---
 
@@ -49,8 +49,8 @@ Informal, acessível e didático, como um professor particular.
 
 ```mermaid
 flowchart TD
-    A[Cliente] -->|Mensagem| B[Streamlit (Interface Visual)]
-    B --> C[LLM]
+    A[Cliente] --> B[Streamlit (Interface Visual)]
+    B --> C[LLM - Ollama]
     C --> D[Base de Conhecimento]
     D --> C
     C --> E[Validação]
@@ -64,7 +64,6 @@ flowchart TD
 | Interface | Streamlit |
 | LLM | Ollama - Local |
 | Base de Conhecimento | JSON/CSV com dados do cliente |
-| Validação | [ex: Checagem de alucinações] |
 
 ---
 
