@@ -63,10 +63,11 @@ REGRAS:
 - Responda de forma sucinta e direta, com no máximo 3 parágrafos.
 """
 
-# ============ FUNÇÃO DE COMUNICAÇÃO COM O LLM ============
-def chamar_llm(mensagem, provedor, url, modelo):
+# ============ GERADOR DE RESPOSTA (STREAMING) ============
+def gerar_resposta_stream(mensagem, provedor, url, modelo):
     """
-    Função preparada para conectar com LM Studio ou Ollama.
+    Gera resposta em tempo real (streaming) para LM Studio ou Ollama,
+    evitando Read Timeouts em processamento local por CPU.
     """
     prompt_completo = f"""{SYSTEM_PROMPT}
 
@@ -76,28 +77,37 @@ CONTEXTO DO CLIENTE:
 Pergunta do usuário: {mensagem}
 Resposta do Edu:"""
 
+    base = url.rstrip('/')
+
     try:
-        base = url.rstrip('/')
-
         if provedor == "LM Studio":
-            # Normaliza endpoint para /v1/chat/completions
-            if base.endswith('/v1'):
-                endpoint = f"{base}/chat/completions"
-            else:
-                endpoint = f"{base}/v1/chat/completions"
-
+            endpoint = f"{base}/chat/completions" if base.endswith('/v1') else f"{base}/v1/chat/completions"
             payload = {
                 "model": modelo,
                 "messages": [
                     {"role": "system", "content": f"{SYSTEM_PROMPT}\n\nCONTEXTO DO CLIENTE:\n{contexto}"},
                     {"role": "user", "content": mensagem}
                 ],
-                "temperature": 0.7
+                "temperature": 0.7,
+                "stream": True
             }
-            resposta = requests.post(endpoint, json=payload, timeout=60)
+            resposta = requests.post(endpoint, json=payload, stream=True, timeout=300)
             resposta.raise_for_status()
-            dados = resposta.json()
-            return dados["choices"][0]["message"]["content"]
+
+            for line in resposta.iter_lines():
+                if line:
+                    decoded = line.decode("utf-8")
+                    if decoded.startswith("data: "):
+                        data_str = decoded[6:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            json_data = json.loads(data_str)
+                            delta = json_data.get("choices", [{}])[0].get("delta", {})
+                            if "content" in delta:
+                                yield delta["content"]
+                        except Exception:
+                            continue
 
         elif provedor == "Ollama":
             if base.endswith('/v1'):
@@ -106,16 +116,26 @@ Resposta do Edu:"""
             payload = {
                 "model": modelo,
                 "prompt": prompt_completo,
-                "stream": False
+                "stream": True
             }
-            resposta = requests.post(endpoint, json=payload, timeout=60)
+            resposta = requests.post(endpoint, json=payload, stream=True, timeout=300)
             resposta.raise_for_status()
-            return resposta.json().get("response", "Nenhuma resposta retornada pelo Ollama.")
+
+            for line in resposta.iter_lines():
+                if line:
+                    try:
+                        json_data = json.loads(line.decode("utf-8"))
+                        if "response" in json_data:
+                            yield json_data["response"]
+                    except Exception:
+                        continue
 
     except requests.exceptions.ConnectionError:
-        return f"⚠️ Erro de Conexão: Não foi possível conectar ao {provedor} em `{url}`. Verifique se o servidor está rodando."
+        yield f"⚠️ Erro de Conexão: Não foi possível conectar ao {provedor} em `{url}`. Verifique se o servidor está rodando."
+    except requests.exceptions.Timeout:
+        yield f"⚠️ Tempo de espera esgotado: O modelo demorou muito para responder. Tente uma pergunta mais curta ou verifique o uso de CPU/GPU."
     except Exception as e:
-        return f"⚠️ Ocorreu um erro ao consultar o {provedor}: {str(e)}"
+        yield f"⚠️ Ocorreu um erro ao consultar o {provedor}: {str(e)}"
 
 # ============ BARRA LATERAL (SIDEBAR) ============
 with st.sidebar:
@@ -153,7 +173,7 @@ with st.sidebar:
 
         if modelos_detectados:
             modelo_nome = st.selectbox("Modelo detectado:", modelos_detectados, index=0)
-            st.success(f"Conectado ao LM Studio! ✅")
+            st.success("Conectado ao LM Studio! ✅")
         else:
             modelo_nome = st.text_input("Nome do Modelo:", value="mistralai/ministral-3-3b")
             st.info("Servidor do LM Studio ativo na porta 1234.")
@@ -187,9 +207,7 @@ if pergunta_usuario := st.chat_input("Ex: O que é CDI? Ou onde estou gastando m
     with st.chat_message("user"):
         st.markdown(pergunta_usuario)
 
-    # Gera resposta com indicador de carregamento
+    # Gera resposta com streaming (efeito máquina de escrever, sem timeout de espera)
     with st.chat_message("assistant"):
-        with st.spinner("Edu está pensando..."):
-            resposta_edu = chamar_llm(pergunta_usuario, provedor, llm_url, modelo_nome)
-            st.markdown(resposta_edu)
-            st.session_state.messages.append({"role": "assistant", "content": resposta_edu})
+        resposta_completa = st.write_stream(gerar_resposta_stream(pergunta_usuario, provedor, llm_url, modelo_nome))
+        st.session_state.messages.append({"role": "assistant", "content": resposta_completa})
